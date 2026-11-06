@@ -1,0 +1,275 @@
+-- Unified SY Protector (Server & Client Dual Loadstring)
+local RunService = game:GetService("RunService")
+local Players = game:GetService("Players")
+local Workspace = game:GetService("Workspace")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+
+local BASE_ZONE_NAME = "BaseZone"
+local ITEM_CONTAINER_NAME = "BrainrotItems"
+local LASER_CAPE_NAME = "LaserCape"
+
+----------------------------------------------------
+-- 1. SERVER LOGIC (Handles global physics, collision & balloon command)
+----------------------------------------------------
+if RunService:IsServer() then
+	print("[SY Protector] Initializing Server Protection System...")
+	
+	-- Setup RemoteEvent for Client Communication
+	local intrusionEvent = ReplicatedStorage:FindFirstChild("SYIntrusionEvent")
+	if not intrusionEvent then
+		intrusionEvent = Instance.new("RemoteEvent")
+		intrusionEvent.Name = "SYIntrusionEvent"
+		intrusionEvent.Parent = ReplicatedStorage
+	end
+
+	-- Apply Balloon Effect to Target
+	local function applyBalloon(targetPlayer)
+		if not targetPlayer or not targetPlayer.Character then return end
+		local rootPart = targetPlayer.Character:FindFirstChild("HumanoidRootPart")
+		if rootPart and not rootPart:FindFirstChild("SY_BalloonEffect") then
+			print("[SY Server] Executing ;balloon on: " .. targetPlayer.Name)
+			
+			local bv = Instance.new("BodyVelocity")
+			bv.Name = "SY_BalloonEffect"
+			bv.Velocity = Vector3.new(0, 40, 0)
+			bv.MaxForce = Vector3.new(20000, 20000, 20000)
+			bv.Parent = rootPart
+			
+			task.delay(5, function()
+				if bv and bv.Parent then bv:Destroy() end
+			end)
+		end
+	end
+
+	-- Base Zone Monitor
+	task.spawn(function()
+		while true do
+			for _, part in ipairs(Workspace:GetDescendants()) do
+				if part:IsA("BasePart") and part.Name == BASE_ZONE_NAME and not part:GetAttribute("SY_Hooked") then
+					part:SetAttribute("SY_Hooked", true)
+					part.Touched:Connect(function(hit)
+						local char = hit.Parent
+						local player = Players:GetPlayerFromCharacter(char)
+						if player then
+							applyBalloon(player)
+							intrusionEvent:FireAllClients(player)
+						end
+					end)
+				end
+			end
+			task.wait(2)
+		end
+	end)
+
+	-- Brainrot Items Monitor
+	task.spawn(function()
+		while true do
+			local itemFolder = Workspace:FindFirstChild(ITEM_CONTAINER_NAME, true)
+			if itemFolder then
+				local function hookItem(item)
+					local targetPart = item:IsA("Model") and (item.PrimaryPart or item:FindFirstChildWhichIsA("BasePart")) or item
+					if targetPart and targetPart:IsA("BasePart") and not targetPart:GetAttribute("SY_Hooked") then
+						targetPart:SetAttribute("SY_Hooked", true)
+						
+						targetPart.Touched:Connect(function(hit)
+							local char = hit.Parent
+							local player = Players:GetPlayerFromCharacter(char)
+							if player then
+								applyBalloon(player)
+								intrusionEvent:FireAllClients(player)
+							end
+						end)
+						
+						local cd = targetPart:FindFirstChildOfClass("ClickDetector") or Instance.new("ClickDetector", targetPart)
+						cd.MouseClick:Connect(function(player)
+							applyBalloon(player)
+							intrusionEvent:FireAllClients(player)
+						end)
+					end
+				end
+				
+				for _, child in ipairs(itemFolder:GetChildren()) do hookItem(child) end
+				itemFolder.ChildAdded:Connect(hookItem)
+			end
+			task.wait(2)
+		end
+	end)
+end
+
+----------------------------------------------------
+-- 2. CLIENT LOGIC (Renders SY Protector UI & Laser Cape Aimbot)
+----------------------------------------------------
+if RunService:IsClient() then
+	print("[SY Protector] Initializing Client UI & Laser Aimbot...")
+	local LocalPlayer = Players.LocalPlayer
+	local intrusionEvent = ReplicatedStorage:WaitForChild("SYIntrusionEvent", 10)
+
+	-- GUI Creation (Classic Dark Red-Accented Theme)
+	local screenGui = Instance.new("ScreenGui")
+	screenGui.Name = "SYProtectorGUI"
+	screenGui.ResetOnSpawn = false
+	screenGui.Parent = LocalPlayer:WaitForChild("PlayerGui")
+
+	local mainFrame = Instance.new("Frame")
+	mainFrame.Name = "MainFrame"
+	mainFrame.Size = UDim2.new(0, 270, 0, 280)
+	mainFrame.Position = UDim2.new(0, 20, 0, 20)
+	mainFrame.BackgroundColor3 = Color3.fromRGB(24, 18, 16)
+	mainFrame.BorderColor3 = Color3.fromRGB(220, 70, 30)
+	mainFrame.BorderSizePixel = 1
+	mainFrame.Active = true
+	mainFrame.Draggable = true
+	mainFrame.Parent = screenGui
+
+	local uiCorner = Instance.new("UICorner")
+	uiCorner.CornerRadius = UDim.new(0, 8)
+	uiCorner.Parent = mainFrame
+
+	local titleBar = Instance.new("TextLabel")
+	titleBar.Name = "TitleBar"
+	titleBar.Size = UDim2.new(1, 0, 0, 36)
+	titleBar.BackgroundColor3 = Color3.fromRGB(35, 24, 20)
+	titleBar.BorderSizePixel = 0
+	titleBar.Font = Enum.Font.GothamBold
+	titleBar.Text = "  SY protector"
+	titleBar.TextColor3 = Color3.fromRGB(255, 120, 60)
+	titleBar.TextSize = 16
+	titleBar.TextXAlignment = Enum.TextXAlignment.Left
+	titleBar.Parent = mainFrame
+
+	local titleCorner = Instance.new("UICorner")
+	titleCorner.CornerRadius = UDim.new(0, 8)
+	titleCorner.Parent = titleBar
+
+	local statusLabel = Instance.new("TextLabel")
+	statusLabel.Size = UDim2.new(1, -20, 0, 24)
+	statusLabel.Position = UDim2.new(0, 10, 0, 42)
+	statusLabel.BackgroundTransparency = 1
+	statusLabel.Font = Enum.Font.Gotham
+	statusLabel.Text = "Status: Monitoring Base & Items"
+	statusLabel.TextColor3 = Color3.fromRGB(100, 255, 150)
+	statusLabel.TextSize = 13
+	statusLabel.Parent = mainFrame
+
+	local function createStyledButton(name, text, positionY)
+		local btn = Instance.new("TextButton")
+		btn.Name = name
+		btn.Size = UDim2.new(1, -20, 0, 34)
+		btn.Position = UDim2.new(0, 10, 0, positionY)
+		btn.BackgroundColor3 = Color3.fromRGB(42, 28, 24)
+		btn.BorderColor3 = Color3.fromRGB(220, 70, 30)
+		btn.BorderSizePixel = 1
+		btn.Font = Enum.Font.GothamBold
+		btn.Text = text
+		btn.TextColor3 = Color3.fromRGB(255, 255, 255)
+		btn.TextSize = 12
+		btn.Parent = mainFrame
+		
+		local btnCorner = Instance.new("UICorner")
+		btnCorner.CornerRadius = UDim.new(0, 6)
+		btnCorner.Parent = btn
+		return btn
+	end
+
+	local btnBaseProtection = createStyledButton("ToggleBase", "Base Protect: ON", 76)
+	local btnItemProtection = createStyledButton("ToggleItems", "Brainrot Protect: ON", 116)
+	local btnAutoAim = createStyledButton("ToggleAim", "Laser Cape Aimbot: ON", 156)
+
+	local baseEnabled = true
+	local itemEnabled = true
+	local aimbotEnabled = true
+
+	btnBaseProtection.MouseButton1Click:Connect(function()
+		baseEnabled = not baseEnabled
+		btnBaseProtection.Text = "Base Protect: " .. (baseEnabled and "ON" or "OFF")
+		btnBaseProtection.BackgroundColor3 = baseEnabled and Color3.fromRGB(42, 28, 24) or Color3.fromRGB(90, 30, 30)
+	end)
+
+	btnItemProtection.MouseButton1Click:Connect(function()
+		itemEnabled = not itemEnabled
+		btnItemProtection.Text = "Brainrot Protect: " .. (itemEnabled and "ON" or "OFF")
+		btnItemProtection.BackgroundColor3 = itemEnabled and Color3.fromRGB(42, 28, 24) or Color3.fromRGB(90, 30, 30)
+	end)
+
+	btnAutoAim.MouseButton1Click:Connect(function()
+		aimbotEnabled = not aimbotEnabled
+		btnAutoAim.Text = "Laser Cape Aimbot: " .. (aimbotEnabled and "ON" or "OFF")
+		btnAutoAim.BackgroundColor3 = aimbotEnabled and Color3.fromRGB(42, 28, 24) or Color3.fromRGB(90, 30, 30)
+	end)
+
+	if intrusionEvent then
+		intrusionEvent.OnClientEvent:Connect(function(targetPlayer)
+			if targetPlayer ~= LocalPlayer then
+				statusLabel.Text = "Intruder: " .. targetPlayer.Name
+				statusLabel.TextColor3 = Color3.fromRGB(255, 85, 85)
+				task.delay(3, function()
+					statusLabel.Text = "Status: Monitoring Base & Items"
+					statusLabel.TextColor3 = Color3.fromRGB(100, 255, 150)
+				end)
+			end
+		end)
+	end
+
+	-- Continuous Laser Cape Aimbot Lock
+	RunService.RenderStepped:Connect(function()
+		if not aimbotEnabled then 
+			local oldBeam = Workspace:FindFirstChild("SY_CapeLaserBeam")
+			if oldBeam then oldBeam:Destroy() end
+			return 
+		end
+		
+		local char = LocalPlayer.Character
+		if not char then return end
+		
+		local cape = char:FindFirstChild(LASER_CAPE_NAME)
+		if not cape then
+			local oldBeam = Workspace:FindFirstChild("SY_CapeLaserBeam")
+			if oldBeam then oldBeam:Destroy() end
+			return
+		end
+		
+		local myRoot = char:FindFirstChild("HumanoidRootPart")
+		if not myRoot then return end
+		
+		local closestTarget = nil
+		local shortestDist = 150
+		
+		for _, p in ipairs(Players:GetPlayers()) do
+			if p ~= LocalPlayer and p.Character and p.Character:FindFirstChild("HumanoidRootPart") then
+				local dist = (p.Character.HumanoidRootPart.Position - myRoot.Position).Magnitude
+				if dist < shortestDist then
+					shortestDist = dist
+					closestTarget = p.Character
+				end
+			end
+		end
+		
+		if closestTarget then
+			local targetPart = closestTarget:FindFirstChild("HumanoidRootPart") or closestTarget:FindFirstChild("Head")
+			local handle = cape:FindFirstChild("Handle") or cape:FindFirstChildOfClass("BasePart") or myRoot
+			
+			if targetPart and handle then
+				local origin = handle.Position
+				local targetPos = targetPart.Position
+				local dist = (targetPos - origin).Magnitude
+				
+				local beam = Workspace:FindFirstChild("SY_CapeLaserBeam")
+				if not beam then
+					beam = Instance.new("Part")
+					beam.Name = "SY_CapeLaserBeam"
+					beam.BrickColor = BrickColor.new("Bright red")
+					beam.Material = Enum.Material.Neon
+					beam.CanCollide = false
+					beam.Anchored = true
+					beam.Parent = Workspace
+				end
+				
+				beam.Size = Vector3.new(0.3, 0.3, dist)
+				beam.CFrame = CFrame.new(origin, targetPos) * CFrame.new(0, 0, -dist / 2)
+			end
+		else
+			local oldBeam = Workspace:FindFirstChild("SY_CapeLaserBeam")
+			if oldBeam then oldBeam:Destroy() end
+		end
+	end)
+end
