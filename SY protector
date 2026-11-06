@@ -14,7 +14,6 @@ local LASER_CAPE_NAME = "LaserCape"
 if RunService:IsServer() then
 	print("[SY Protector] Initializing Server Protection System...")
 	
-	-- Shared RemoteEvents
 	local intrusionEvent = ReplicatedStorage:FindFirstChild("SYIntrusionEvent")
 	if not intrusionEvent then
 		intrusionEvent = Instance.new("RemoteEvent")
@@ -29,22 +28,20 @@ if RunService:IsServer() then
 		commandSelectEvent.Parent = ReplicatedStorage
 	end
 
-	-- Global state for selected admin command
 	local activeAdminCommand = "Balloon"
 
 	commandSelectEvent.OnServerEvent:Connect(function(player, commandName)
 		activeAdminCommand = commandName
-		print("[SY Server] Active Admin Command updated to: " .. commandName)
+		print("[SY Server] Active Admin Command set to: " .. commandName)
 	end)
 
-	-- Execute Admin Commands on Target
 	local function executeAdminCommand(targetPlayer)
 		if not targetPlayer or not targetPlayer.Character then return end
 		local rootPart = targetPlayer.Character:FindFirstChild("HumanoidRootPart")
 		local humanoid = targetPlayer.Character:FindFirstChildOfClass("Humanoid")
 		if not rootPart then return end
 
-		print("[SY Server] Executing ;" .. string.lower(activeAdminCommand) .. " on: " .. targetPlayer.Name)
+		print("[SY Server] Triggering ;" .. string.lower(activeAdminCommand) .. " on: " .. targetPlayer.Name)
 
 		if activeAdminCommand == "Balloon" then
 			if not rootPart:FindFirstChild("SY_AdminEffect") then
@@ -59,7 +56,7 @@ if RunService:IsServer() then
 			if not rootPart:FindFirstChild("SY_AdminEffect") then
 				local bv = Instance.new("BodyVelocity")
 				bv.Name = "SY_AdminEffect"
-				bv.Velocity = Vector3.new(0, 80, 0)
+				bv.Velocity = Vector3.new(0, 85, 0)
 				bv.MaxForce = Vector3.new(25000, 25000, 25000)
 				bv.Parent = rootPart
 				task.delay(3, function() if bv and bv.Parent then bv:Destroy() end end)
@@ -140,7 +137,7 @@ if RunService:IsServer() then
 end
 
 ----------------------------------------------------
--- 2. CLIENT LOGIC (SY Protector UI & Laser Aimbot)
+-- 2. CLIENT LOGIC (SY Protector UI & Laser Cape Aimbot)
 ----------------------------------------------------
 if RunService:IsClient() then
 	print("[SY Protector] Initializing Client UI & Laser Cape Aimbot...")
@@ -148,7 +145,7 @@ if RunService:IsClient() then
 	local intrusionEvent = ReplicatedStorage:WaitForChild("SYIntrusionEvent", 10)
 	local commandSelectEvent = ReplicatedStorage:WaitForChild("SYCommandSelectEvent", 10)
 
-	-- GUI Creation
+	-- UI Setup
 	local screenGui = Instance.new("ScreenGui")
 	screenGui.Name = "SYProtectorGUI"
 	screenGui.ResetOnSpawn = false
@@ -289,7 +286,7 @@ if RunService:IsClient() then
 		end)
 	end
 
-	-- Continuous Laser Cape Aimbot Lock
+	-- Continuous Laser Cape Aimbot Target Tracking
 	RunService.RenderStepped:Connect(function()
 		if not aimbotEnabled then
 			local oldBeam = Workspace:FindFirstChild("SY_CapeLaserBeam")
@@ -300,7 +297,7 @@ if RunService:IsClient() then
 		local char = LocalPlayer.Character
 		if not char then return end
 
-		-- Detect Laser Cape inside Character or Accessories
+		-- Look for Laser Cape item/accessory inside character or equipped tool
 		local cape = char:FindFirstChild(LASER_CAPE_NAME) or char:FindFirstChildWhichIsA("Accessory")
 		if not cape or (cape:IsA("Accessory") and cape.Name ~= LASER_CAPE_NAME) then
 			local oldBeam = Workspace:FindFirstChild("SY_CapeLaserBeam")
@@ -311,7 +308,7 @@ if RunService:IsClient() then
 		local myRoot = char:FindFirstChild("HumanoidRootPart")
 		if not myRoot then return end
 
-		-- Find closest enemy target
+		-- Lock onto closest player
 		local closestTarget = nil
 		local shortestDist = 200
 
